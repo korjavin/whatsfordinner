@@ -2,30 +2,30 @@
 
 ## 1. Project Setup
 - [x] Initialize Go module
-- [ ] Setup `.env` configuration parsing (Telegram token, OpenAI config, etc.)
-- [ ] Embed BadgerDB as local storage
-- [ ] Telegram bot client (polling)
-- [ ] Logging setup (structured + timestamps)
+- [x] Setup `.env` configuration parsing (Telegram token, OpenAI config, etc.)
+- [x] Embed BadgerDB as local storage
+- [x] Telegram bot client (polling)
+- [x] Logging setup (structured + timestamps)
 
 ## 2. Data Models
-- [ ] ChannelState: track per-channel data
-- [ ] Fridge: current ingredients list
-- [ ] Dish: name, ingredients, instructions, cuisine type
-- [ ] VoteState: current voting process, participants
-- [ ] CookStatus: cooking progress
-- [ ] Statistics: cook, helper, suggester leaderboards
+- [x] ChannelState: track per-channel data
+- [x] Fridge: current ingredients list
+- [x] Dish: name, ingredients, instructions, cuisine type
+- [x] VoteState: current voting process, participants
+- [x] CookStatus: cooking progress
+- [x] Statistics: cook, helper, suggester leaderboards
 
 ## 3. Bot Command Handlers
-- [ ] `/dinner` – Suggest dinner, start poll, manage vote lifecycle
+- [x] `/dinner` – Suggest dinner, start poll, manage vote lifecycle
 - [ ] `/suggest` – Allow manual dish suggestion
-- [ ] `/fridge` – Show current ingredients
+- [x] `/fridge` – Show current ingredients
 - [ ] `/sync_fridge` – Reinitialize fridge
 - [ ] `/add_photo` – Use photo to extract ingredients
 - [ ] `/stats` – Show family leaderboards
 
 ## 4. Voting and Cooking Flow
-- [ ] Suggest 2–3 dishes with matching fridge contents and cuisine filter
-- [ ] Create Telegram poll, wait for majority vote
+- [x] Suggest 2–3 dishes with matching fridge contents and cuisine filter
+- [x] Create Telegram poll, wait for majority vote
 - [ ] Ask willing cook from the "pro" voters
 - [ ] If none agree, retry cooking step
 - [ ] If still nobody agrees, cancel vote and mark "no dinner today"
@@ -34,7 +34,7 @@
 - [ ] Confirm when dinner is ready
 
 ## 5. Fridge Inventory
-- [ ] Initial entry via chat
+- [x] Initial entry via chat
 - [ ] AI image extraction (OpenAI Vision API)
 - [ ] Ingredient used marking via cook UI
 - [ ] Sync fridge items manually with buttons ("We don’t have this anymore")
@@ -54,9 +54,9 @@
 - [ ] Safe concurrent access
 
 ## 9. GitHub Actions & Containerization
-- [ ] Setup Dockerfile
+- [x] Setup Dockerfile
 - [ ] Setup GitHub Actions CI/CD
-- [ ] Podman Compose config for local running
+- [x] Podman Compose config for local running
 
 ## 10. Tests
 - [ ] Unit tests for data models and logic
@@ -68,7 +68,12 @@
 - [ ] Use inline buttons and short messages
 - [ ] Add emojis for fun and readability
 
-## 12. Final Touches
+## 12. Caching
+- [ ] Cache dish suggestions
+- [ ] Cache ingredient extraction results
+- [ ] Cache OpenAI responses if the question is exactly the same
+
+## 13. Final Touches
 - [ ] Admin-only reset of state
 - [ ] Load/save config for cuisines per channel
 - [ ] Automatic cleanup of old polls/dinners
