@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,9 @@ import (
 	"github.com/korjavin/whatsfordinner/pkg/suggest"
 	"github.com/korjavin/whatsfordinner/pkg/telegram"
 )
+
+// Global map to track poll IDs to channel IDs
+var pollChannelMap = make(map[string]int64)
 
 func main() {
 	// Initialize logger
@@ -190,8 +194,19 @@ func main() {
 				return
 			}
 
-			// Store vote state
-			_, err = pollService.CreateVote(chatID, fmt.Sprintf("%d", pollMsg.MessageID), pollMsg.MessageID, options)
+			// Log the poll object to understand its structure
+			log.Info("Poll message: %+v", pollMsg)
+			log.Info("Poll object: %+v", pollMsg.Poll)
+
+			// In Telegram, the poll ID we receive in poll answers is different from the poll.ID
+			// We need to store the actual poll ID that will be used in poll answers
+			// For now, we'll use the poll ID directly from the message
+			pollID := pollMsg.Poll.ID
+			log.Info("Created poll with ID %s for channel %d", pollID, chatID)
+			pollChannelMap[pollID] = chatID
+
+			// Store vote state - use the same poll ID for consistency
+			_, err = pollService.CreateVote(chatID, pollID, pollMsg.MessageID, options)
 			if err != nil {
 				log.Error("Failed to create vote state: %v", err)
 			}
@@ -473,6 +488,129 @@ func main() {
 
 	// Setup default handler
 	defaultHandler := func(update tgbotapi.Update) {
+		// Handle poll answers
+		if update.PollAnswer != nil {
+			// Get the poll ID
+			pollID := update.PollAnswer.PollID
+			userID := fmt.Sprintf("%d", update.PollAnswer.User.ID)
+
+			// Debug log to see what's in our map
+			log.Info("Received poll answer for poll %s from user %s", pollID, userID)
+			log.Info("Poll ID type: %T, value: %v", pollID, pollID)
+			for mapPollID, mapChannelID := range pollChannelMap {
+				log.Info("Poll map entry: poll %s -> channel %d", mapPollID, mapChannelID)
+			}
+
+			// First check our global map for the channel ID
+			var foundChannelID int64
+			var exists bool
+
+			// Check if the poll ID is in our map
+			foundChannelID, exists = pollChannelMap[pollID]
+			if exists {
+				log.Info("Found channel %d for poll ID %s", foundChannelID, pollID)
+			}
+
+			if !exists {
+				// If not in our map, try to find it using the service method
+				var err error
+				foundChannelID, err = pollService.FindChannelByPollID(pollID)
+				if err != nil {
+					log.Error("Could not find channel for poll %s: %v", pollID, err)
+					return
+				}
+				// Add it to our map for future lookups
+				pollChannelMap[pollID] = foundChannelID
+				log.Info("Added poll %s to channel %d mapping from database", pollID, foundChannelID)
+			}
+
+			// Record the vote
+			if len(update.PollAnswer.OptionIDs) > 0 {
+				// Get the option text from the poll
+				vote, err := pollService.GetVote(foundChannelID, pollID)
+				if err != nil {
+					log.Error("Failed to get vote: %v", err)
+					return
+				}
+
+				// Get the option text
+				optionID := update.PollAnswer.OptionIDs[0] // We only support single-choice polls
+				if int(optionID) >= len(vote.Options) {
+					log.Error("Invalid option ID: %d", optionID)
+					return
+				}
+
+				option := vote.Options[optionID]
+
+				// Record the vote
+				err = pollService.RecordVote(foundChannelID, pollID, userID, option)
+				if err != nil {
+					log.Error("Failed to record vote: %v", err)
+					return
+				}
+
+				// Get the channel state to check the member count
+				channelKey := fmt.Sprintf("channel:%d", foundChannelID)
+				var channelState models.ChannelState
+				err = store.Get(channelKey, &channelState)
+				if err != nil {
+					log.Error("Failed to get channel state: %v", err)
+					return
+				}
+
+				// Always get the latest member count from Telegram API
+				log.Info("Attempting to get chat member count for channel %d", foundChannelID)
+				chatMemberCount, err := bot.GetChatMemberCount(foundChannelID)
+				if err != nil {
+					log.Error("Failed to get chat member count: %v", err)
+					// Fallback to default value if API call fails
+					if channelState.MemberCount == 0 {
+						channelState.MemberCount = 3
+						log.Info("Using default member count: %d", channelState.MemberCount)
+					} else {
+						log.Info("Using existing member count: %d", channelState.MemberCount)
+					}
+				} else {
+					log.Info("Got chat member count from Telegram API: %d", chatMemberCount)
+					channelState.MemberCount = chatMemberCount - 1 // bot is not a family member
+					// Save the updated channel state
+					err = store.Set(channelKey, channelState)
+					if err != nil {
+						log.Error("Failed to update channel state: %v", err)
+					}
+				}
+
+				// Check if we've reached the threshold to close the poll
+				thresholdReached, winningOption, err := pollService.CheckVoteThreshold(foundChannelID, pollID, channelState.MemberCount, 2.0/3.0)
+				if err != nil {
+					log.Error("Failed to check vote threshold: %v", err)
+					return
+				}
+
+				if thresholdReached {
+					// End the vote
+					err = pollService.EndVote(foundChannelID, pollID, winningOption)
+					if err != nil {
+						log.Error("Failed to end vote: %v", err)
+						return
+					}
+
+					// Send a message that the poll is closed
+					bot.SendMessage(foundChannelID, fmt.Sprintf("🎉 The poll has closed! The winning dish is *%s*.", winningOption))
+
+					// Ask for cook volunteers
+					keyboard := tgbotapi.NewInlineKeyboardMarkup(
+						tgbotapi.NewInlineKeyboardRow(
+							tgbotapi.NewInlineKeyboardButtonData("I'll cook!", fmt.Sprintf("volunteer:%s", pollID)),
+						),
+					)
+
+					bot.SendMessageWithKeyboard(foundChannelID, fmt.Sprintf("Who wants to cook *%s* tonight? Press the button below to volunteer!", winningOption), keyboard)
+				}
+			}
+			return
+		}
+
 		// Skip if there's no message
 		if update.Message == nil {
 			return
@@ -751,6 +889,393 @@ func main() {
 
 		// Edit the message to remove the buttons
 		editMsg := tgbotapi.NewEditMessageText(chatID, callback.Message.MessageID, "Photo adding cancelled. You can use /fridge to see your current ingredients or /dinner to get dinner suggestions.")
+		editMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{}
+		bot.Send(editMsg)
+	}
+
+	// Handle volunteer for cooking
+	callbackHandlers["volunteer:"] = func(callback *tgbotapi.CallbackQuery) {
+		chatID := callback.Message.Chat.ID
+		userID := fmt.Sprintf("%d", callback.From.ID)
+		username := callback.From.UserName
+		if username == "" {
+			username = callback.From.FirstName
+		}
+
+		// Extract the poll ID from the callback data
+		parts := strings.Split(callback.Data, ":")
+		if len(parts) != 2 {
+			log.Error("Invalid callback data: %s", callback.Data)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		pollID := parts[1]
+
+		// Add the volunteer
+		err := pollService.AddCookVolunteer(chatID, pollID, userID)
+		if err != nil {
+			log.Error("Failed to add cook volunteer: %v", err)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Answer the callback
+		bot.AnswerCallbackQuery(callback.ID, "Thanks for volunteering to cook!")
+
+		// Get the vote to find the winning dish
+		vote, err := pollService.GetVote(chatID, pollID)
+		if err != nil {
+			log.Error("Failed to get vote: %v", err)
+			return
+		}
+
+		// Edit the message to remove the buttons
+		editMsg := tgbotapi.NewEditMessageText(chatID, callback.Message.MessageID, fmt.Sprintf("@%s has volunteered to cook %s tonight!", username, vote.WinningDish))
+		editMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{}
+		bot.Send(editMsg)
+
+		// Get dish information from OpenAI
+		dishInfo, err := openaiClient.GetDishInfo(vote.WinningDish)
+		if err != nil {
+			log.Error("Failed to get dish info: %v", err)
+			bot.SendMessage(chatID, fmt.Sprintf("😢 Sorry, I couldn't find cooking instructions for %s. @%s, you're on your own for this one!", vote.WinningDish, username))
+			return
+		}
+
+		// Extract dish information
+		dishName, _ := dishInfo["name"].(string)
+		if dishName == "" {
+			dishName = vote.WinningDish // Fallback to the winning dish name
+		}
+
+		// Get ingredients needed
+		var ingredientsNeeded []string
+		ingredientsList, ok := dishInfo["ingredients_needed"].([]interface{})
+		if !ok {
+			// Try alternative key
+			ingredientsList, ok = dishInfo["ingredients"].([]interface{})
+		}
+
+		if ok {
+			ingredientsNeeded = make([]string, len(ingredientsList))
+			for i, ing := range ingredientsList {
+				if ingStr, ok := ing.(string); ok {
+					ingredientsNeeded[i] = ingStr
+				}
+			}
+		}
+
+		// Get instructions
+		var instructions []string
+		instructionsList, ok := dishInfo["instructions"].([]interface{})
+		if ok {
+			instructions = make([]string, len(instructionsList))
+			for i, inst := range instructionsList {
+				if instStr, ok := inst.(string); ok {
+					instructions[i] = instStr
+				}
+			}
+		}
+
+		// Create a dish object
+		dish := models.Dish{
+			Name:         dishName,
+			Cuisine:      vote.WinningDish, // We don't have the cuisine, so use the dish name
+			Ingredients:  ingredientsNeeded,
+			Instructions: instructions,
+		}
+
+		// Create a dinner event
+		dinnerService := dinner.New(store, fridgeService, openaiClient)
+		dinnerEvent, err := dinnerService.CreateDinner(chatID, dish, userID)
+		if err != nil {
+			log.Error("Failed to create dinner event: %v", err)
+			// Continue anyway
+		}
+
+		// Send cooking instructions
+		msgText := fmt.Sprintf("🍳 *Cooking Instructions for %s*\n\n", dishName)
+
+		// Add ingredients
+		if len(ingredientsNeeded) > 0 {
+			msgText += "*Ingredients:*\n"
+			for _, ingredient := range ingredientsNeeded {
+				msgText += fmt.Sprintf("• %s\n", ingredient)
+			}
+			msgText += "\n"
+		}
+
+		// Add instructions
+		if len(instructions) > 0 {
+			msgText += "*Instructions:*\n"
+			for i, instruction := range instructions {
+				msgText += fmt.Sprintf("%d. %s\n", i+1, instruction)
+			}
+		}
+
+		// Add cooking status buttons
+		callbackData := fmt.Sprintf("dinner_ready:%s", dinnerEvent.ID)
+		log.Info("Creating 'Dinner is ready' button with callback data: %s", callbackData)
+		keyboard := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🍽️ Dinner is ready!", callbackData),
+			),
+		)
+
+		bot.SendMessageWithKeyboard(chatID, msgText, keyboard)
+	}
+
+	// Handle dinner ready callback
+	callbackHandlers["dinner_ready:"] = func(callback *tgbotapi.CallbackQuery) {
+		chatID := callback.Message.Chat.ID
+		userID := fmt.Sprintf("%d", callback.From.ID)
+		username := callback.From.UserName
+		if username == "" {
+			username = callback.From.FirstName
+		}
+
+		// Extract the dinner ID from the callback data
+		// The format is "dinner_ready:dinner:{channelID}:{timestamp}"
+		parts := strings.Split(callback.Data, ":")
+		if len(parts) < 2 {
+			log.Error("Invalid callback data: %s", callback.Data)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Reconstruct the dinner ID by joining all parts after "dinner_ready"
+		dinnerID := strings.Join(parts[1:], ":")
+
+		// Get the dinner event
+		log.Info("Looking up dinner with ID: %s", dinnerID)
+		var dinnerEvent models.Dinner
+		err := store.Get(dinnerID, &dinnerEvent)
+		if err != nil {
+			log.Error("Failed to get dinner event: %v", err)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+		log.Info("Successfully found dinner: %s cooked by %s", dinnerEvent.Dish.Name, dinnerEvent.Cook)
+
+		// Check if the user is the cook
+		if dinnerEvent.Cook != userID {
+			bot.AnswerCallbackQuery(callback.ID, "Only the cook can mark dinner as ready.")
+			return
+		}
+
+		// Mark the dinner as finished
+		dinnerService := dinner.New(store, fridgeService, openaiClient)
+		err = dinnerService.FinishDinner(chatID)
+		if err != nil {
+			log.Error("Failed to finish dinner: %v", err)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Answer the callback
+		bot.AnswerCallbackQuery(callback.ID, "Dinner is ready!")
+
+		// Edit the message to remove the buttons
+		editMsg := tgbotapi.NewEditMessageText(chatID, callback.Message.MessageID, callback.Message.Text+"\n\n✅ Dinner is ready!")
+		editMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{}
+		bot.Send(editMsg)
+
+		// Send a message to the chat
+		bot.SendMessage(chatID, fmt.Sprintf("🍽️ *Dinner is ready!* @%s has prepared %s. Enjoy your meal!", username, dinnerEvent.Dish.Name))
+
+		// Add rating buttons
+		log.Info("Creating rating buttons for dinner ID: %s", dinnerID)
+
+		// Create callback data for each rating
+		rate1 := fmt.Sprintf("rate:%s:1", dinnerID)
+		rate2 := fmt.Sprintf("rate:%s:2", dinnerID)
+		rate3 := fmt.Sprintf("rate:%s:3", dinnerID)
+		rate4 := fmt.Sprintf("rate:%s:4", dinnerID)
+		rate5 := fmt.Sprintf("rate:%s:5", dinnerID)
+
+		log.Info("Rating callback example: %s", rate3) // Log one example for debugging
+
+		keyboard := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("⭐", rate1),
+				tgbotapi.NewInlineKeyboardButtonData("⭐⭐", rate2),
+				tgbotapi.NewInlineKeyboardButtonData("⭐⭐⭐", rate3),
+				tgbotapi.NewInlineKeyboardButtonData("⭐⭐⭐⭐", rate4),
+				tgbotapi.NewInlineKeyboardButtonData("⭐⭐⭐⭐⭐", rate5),
+			),
+		)
+
+		bot.SendMessageWithKeyboard(chatID, "How would you rate tonight's dinner? Your feedback helps improve future suggestions!", keyboard)
+	}
+
+	// Handle dinner rating callback
+	callbackHandlers["rate:"] = func(callback *tgbotapi.CallbackQuery) {
+		chatID := callback.Message.Chat.ID
+		userID := fmt.Sprintf("%d", callback.From.ID)
+		username := callback.From.UserName
+		if username == "" {
+			username = callback.From.FirstName
+		}
+
+		// Extract the dinner ID and rating from the callback data
+		// The format is "rate:dinner:{channelID}:{timestamp}:{rating}"
+		parts := strings.Split(callback.Data, ":")
+		if len(parts) < 3 {
+			log.Error("Invalid callback data: %s", callback.Data)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// The last part is the rating
+		rating, err := strconv.Atoi(parts[len(parts)-1])
+		if err != nil || rating < 1 || rating > 5 {
+			log.Error("Invalid rating: %s", parts[len(parts)-1])
+			bot.AnswerCallbackQuery(callback.ID, "Invalid rating. Please try again.")
+			return
+		}
+
+		// Reconstruct the dinner ID by joining all parts between "rate" and the rating
+		dinnerID := strings.Join(parts[1:len(parts)-1], ":")
+		log.Info("Looking up dinner with ID: %s for rating: %d", dinnerID, rating)
+
+		// Get the dinner event
+		var dinnerEvent models.Dinner
+		err = store.Get(dinnerID, &dinnerEvent)
+		if err != nil {
+			log.Error("Failed to get dinner event: %v", err)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Add the rating
+		dinnerService := dinner.New(store, fridgeService, openaiClient)
+		err = dinnerService.RateDinner(dinnerID, userID, rating)
+		if err != nil {
+			log.Error("Failed to rate dinner: %v", err)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Answer the callback
+		bot.AnswerCallbackQuery(callback.ID, fmt.Sprintf("Thanks for rating %d stars!", rating))
+
+		// Edit the message to remove the buttons
+		editMsg := tgbotapi.NewEditMessageText(chatID, callback.Message.MessageID, fmt.Sprintf("Thanks for your feedback! @%s rated tonight's dinner %d stars.", username, rating))
+		editMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{}
+		bot.Send(editMsg)
+
+		// Update the fridge by removing used ingredients
+		if len(dinnerEvent.Dish.Ingredients) > 0 {
+			// Ask if they want to update the fridge
+			log.Info("Creating update fridge buttons for dinner ID: %s", dinnerID)
+
+			// Create callback data for update fridge
+			updateFridgeCallback := fmt.Sprintf("update_fridge:%s", dinnerID)
+			log.Info("Update fridge callback: %s", updateFridgeCallback)
+
+			keyboard := tgbotapi.NewInlineKeyboardMarkup(
+				tgbotapi.NewInlineKeyboardRow(
+					tgbotapi.NewInlineKeyboardButtonData("Yes, update fridge", updateFridgeCallback),
+					tgbotapi.NewInlineKeyboardButtonData("No, keep as is", "skip_update_fridge"),
+				),
+			)
+
+			bot.SendMessageWithKeyboard(chatID, "Would you like to update your fridge by removing the ingredients used for this dinner?", keyboard)
+		}
+	}
+
+	// Handle update fridge callback
+	callbackHandlers["update_fridge:"] = func(callback *tgbotapi.CallbackQuery) {
+		chatID := callback.Message.Chat.ID
+
+		// Extract the dinner ID from the callback data
+		// The format is "update_fridge:dinner:{channelID}:{timestamp}"
+		parts := strings.Split(callback.Data, ":")
+		if len(parts) < 2 {
+			log.Error("Invalid callback data: %s", callback.Data)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Reconstruct the dinner ID by joining all parts after "update_fridge"
+		dinnerID := strings.Join(parts[1:], ":")
+		log.Info("Looking up dinner with ID: %s for fridge update", dinnerID)
+
+		// Get the dinner event
+		var dinnerEvent models.Dinner
+		err := store.Get(dinnerID, &dinnerEvent)
+		if err != nil {
+			log.Error("Failed to get dinner event: %v", err)
+			bot.AnswerCallbackQuery(callback.ID, "Something went wrong. Please try again.")
+			return
+		}
+
+		// Remove ingredients from the fridge
+		for _, ingredient := range dinnerEvent.Dish.Ingredients {
+			err := fridgeService.RemoveIngredient(chatID, ingredient)
+			if err != nil {
+				log.Error("Failed to remove ingredient %s: %v", ingredient, err)
+				// Continue with other ingredients
+			}
+		}
+
+		// Update the dinner with the used ingredients
+		dinnerService := dinner.New(store, fridgeService, openaiClient)
+		err = dinnerService.UpdateUsedIngredients(dinnerID, dinnerEvent.Dish.Ingredients)
+		if err != nil {
+			log.Error("Failed to update used ingredients: %v", err)
+			// Continue anyway
+		}
+
+		// Answer the callback
+		bot.AnswerCallbackQuery(callback.ID, "Fridge updated!")
+
+		// Edit the message to remove the buttons
+		editMsg := tgbotapi.NewEditMessageText(chatID, callback.Message.MessageID, "✅ Your fridge has been updated by removing the ingredients used for this dinner.")
+		editMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{}
+		bot.Send(editMsg)
+
+		// Show the updated fridge
+		ingredients, err := fridgeService.ListIngredients(chatID)
+		if err != nil {
+			log.Error("Failed to list ingredients: %v", err)
+			return
+		}
+
+		if len(ingredients) == 0 {
+			bot.SendMessage(chatID, "Your fridge is now empty! You might want to add more ingredients with /sync_fridge or /add_photo.")
+			return
+		}
+
+		// Create a formatted message with all ingredients
+		msgText := "🧊 Here's what's left in your fridge:\n\n"
+
+		// Sort ingredients alphabetically
+		sort.Slice(ingredients, func(i, j int) bool {
+			return ingredients[i].Name < ingredients[j].Name
+		})
+
+		for _, ingredient := range ingredients {
+			if ingredient.Quantity != "" {
+				msgText += fmt.Sprintf("• %s (%s)\n", ingredient.Name, ingredient.Quantity)
+			} else {
+				msgText += fmt.Sprintf("• %s\n", ingredient.Name)
+			}
+		}
+
+		bot.SendMessage(chatID, msgText)
+	}
+
+	// Handle skip update fridge callback
+	callbackHandlers["skip_update_fridge"] = func(callback *tgbotapi.CallbackQuery) {
+		chatID := callback.Message.Chat.ID
+
+		// Answer the callback
+		bot.AnswerCallbackQuery(callback.ID, "Fridge not updated.")
+
+		// Edit the message to remove the buttons
+		editMsg := tgbotapi.NewEditMessageText(chatID, callback.Message.MessageID, "Fridge not updated. Your ingredients remain the same.")
 		editMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{}
 		bot.Send(editMsg)
 	}

@@ -12,6 +12,7 @@ type ChannelState struct {
 	CurrentVote   *VoteState `json:"current_vote,omitempty"`
 	LastActivity  time.Time  `json:"last_activity"`
 	Cuisines      []string   `json:"cuisines"`
+	MemberCount   int        `json:"member_count,omitempty"`
 }
 
 // Fridge represents the ingredients available in a channel's fridge

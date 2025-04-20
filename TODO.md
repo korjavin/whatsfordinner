@@ -17,16 +17,17 @@
 
 ## 3. Bot Command Handlers
 - [x] `/dinner` – Suggest dinner, start poll, manage vote lifecycle
-- [ ] `/suggest` – Allow manual dish suggestion
+- [x] `/suggest` – Allow manual dish suggestion
 - [x] `/fridge` – Show current ingredients
-- [ ] `/sync_fridge` – Reinitialize fridge
-- [ ] `/add_photo` – Use photo to extract ingredients
+- [x] `/sync_fridge` – Reinitialize fridge
+- [x] `/add_photo` – Use photo to extract ingredients
+- [ ] `/add` – Use text to extract ingredients and add them to fridge
 - [ ] `/stats` – Show family leaderboards
 
 ## 4. Voting and Cooking Flow
 - [x] Suggest 2–3 dishes with matching fridge contents and cuisine filter
 - [x] Create Telegram poll, wait for majority vote
-- [ ] Ask willing cook from the "pro" voters
+- [x] Ask willing cook from the "pro" voters
 - [ ] If none agree, retry cooking step
 - [ ] If still nobody agrees, cancel vote and mark "no dinner today"
 - [ ] Pick random cook from volunteers and share instructions
@@ -35,7 +36,7 @@
 
 ## 5. Fridge Inventory
 - [x] Initial entry via chat
-- [ ] AI image extraction (OpenAI Vision API)
+- [x] AI image extraction (OpenAI Vision API)
 - [ ] Ingredient used marking via cook UI
 - [ ] Sync fridge items manually with buttons ("We don’t have this anymore")
 
@@ -74,8 +75,6 @@
 - [ ] Cache OpenAI responses if the question is exactly the same
 
 ## 13. Final Touches
-- [ ] Admin-only reset of state
-- [ ] Load/save config for cuisines per channel
 - [ ] Automatic cleanup of old polls/dinners
 - [ ] Backup/export fridge and stats
 

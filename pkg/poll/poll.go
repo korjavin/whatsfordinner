@@ -2,6 +2,7 @@ package poll
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/korjavin/whatsfordinner/pkg/logger"
@@ -37,6 +38,14 @@ func (s *Service) CreateVote(channelID int64, pollID string, messageID int, opti
 	err := s.store.Set(voteKey, vote)
 	if err != nil {
 		return nil, err
+	}
+
+	// Create a direct mapping from poll ID to channel ID for easier lookup
+	pollMappingKey := fmt.Sprintf("poll_mapping:%s", pollID)
+	err = s.store.Set(pollMappingKey, channelID)
+	if err != nil {
+		s.logger.Error("Failed to create poll mapping: %v", err)
+		// Continue anyway, as this is just an optimization
 	}
 
 	// Update channel state
@@ -212,4 +221,109 @@ func (s *Service) SelectCook(channelID int64, pollID, userID string) error {
 	vote.SelectedCook = userID
 
 	return s.store.Set(voteKey, vote)
+}
+
+// CheckVoteThreshold checks if the vote has reached the threshold to be closed
+// Returns true if the threshold is reached, the winning option, and an error if any
+func (s *Service) CheckVoteThreshold(channelID int64, pollID string, channelMemberCount int, thresholdPercent float64) (bool, string, error) {
+	voteKey := fmt.Sprintf("vote:%d:%s", channelID, pollID)
+	var vote models.VoteState
+	err := s.store.Get(voteKey, &vote)
+	if err != nil {
+		return false, "", err
+	}
+
+	// If the vote is already ended, return false
+	if !vote.EndedAt.IsZero() {
+		return false, "", nil
+	}
+
+	// Calculate the threshold
+	threshold := int(math.Ceil(float64(channelMemberCount) * thresholdPercent))
+	s.logger.Debug("Threshold: %d (channel members: %d, threshold percent: %.2f)", threshold, channelMemberCount, thresholdPercent)
+
+	// Count the total votes
+	totalVotes := len(vote.Votes)
+	s.logger.Debug("Total votes: %d", totalVotes)
+
+	// Check if the threshold is reached
+	if totalVotes >= threshold {
+		// Get the results
+		_, winningOption, err := s.GetVoteResults(channelID, pollID)
+		if err != nil {
+			return false, "", err
+		}
+
+		return true, winningOption, nil
+	}
+
+	return false, "", nil
+}
+
+// GetVote gets a vote by its ID
+func (s *Service) GetVote(channelID int64, pollID string) (*models.VoteState, error) {
+	voteKey := fmt.Sprintf("vote:%d:%s", channelID, pollID)
+	var vote models.VoteState
+	err := s.store.Get(voteKey, &vote)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vote, nil
+}
+
+// FindChannelByPollID finds the channel ID that contains a poll with the given ID
+func (s *Service) FindChannelByPollID(pollID string) (int64, error) {
+	// Create a direct mapping for poll ID to channel ID
+	pollMappingKey := fmt.Sprintf("poll_mapping:%s", pollID)
+	var channelID int64
+	err := s.store.Get(pollMappingKey, &channelID)
+	if err == nil {
+		// We found a direct mapping
+		return channelID, nil
+	}
+
+	// If we don't have a direct mapping, search through all channels
+	channelKeys, err := s.store.List("channel:")
+	if err != nil {
+		return 0, fmt.Errorf("failed to list channels: %w", err)
+	}
+
+	for _, channelKey := range channelKeys {
+		var channelState models.ChannelState
+		err := s.store.Get(channelKey, &channelState)
+		if err != nil {
+			s.logger.Error("Failed to get channel state: %v", err)
+			continue
+		}
+
+		// Check if this channel has a current vote with this poll ID
+		if channelState.CurrentVote != nil && channelState.CurrentVote.PollID == pollID {
+			return channelState.ChannelID, nil
+		}
+
+		// Also check for past votes
+		voteKeys, err := s.store.List(fmt.Sprintf("vote:%d:", channelState.ChannelID))
+		if err != nil {
+			s.logger.Error("Failed to list votes for channel %d: %v", channelState.ChannelID, err)
+			continue
+		}
+
+		for _, voteKey := range voteKeys {
+			var vote models.VoteState
+			err := s.store.Get(voteKey, &vote)
+			if err != nil {
+				s.logger.Error("Failed to get vote %s: %v", voteKey, err)
+				continue
+			}
+
+			if vote.PollID == pollID {
+				// Create a mapping for future lookups
+				s.store.Set(pollMappingKey, channelState.ChannelID)
+				return channelState.ChannelID, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("channel not found for poll %s", pollID)
 }

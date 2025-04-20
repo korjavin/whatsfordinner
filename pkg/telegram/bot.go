@@ -143,3 +143,17 @@ func (b *Bot) GetFileURL(fileID string) (string, error) {
 
 	return file.Link(b.api.Token), nil
 }
+
+// GetChatMemberCount gets the number of members in a chat
+func (b *Bot) GetChatMemberCount(chatID int64) (int, error) {
+	count, err := b.api.GetChatMembersCount(tgbotapi.ChatMemberCountConfig{
+		ChatConfig: tgbotapi.ChatConfig{
+			ChatID: chatID,
+		},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get chat member count: %w", err)
+	}
+
+	return count, nil
+}

@@ -246,6 +246,12 @@ func (s *Service) FinishDinner(channelID int64) error {
 	dinner := channelState.CurrentDinner
 	dinner.FinishedAt = time.Now()
 
+	// Initialize the Ratings map if it's nil (just in case)
+	if dinner.Ratings == nil {
+		s.logger.Info("Initializing Ratings map for dinner %s during FinishDinner", dinner.ID)
+		dinner.Ratings = make(map[string]int)
+	}
+
 	err = s.store.Set(dinner.ID, dinner)
 	if err != nil {
 		return err
@@ -266,6 +272,12 @@ func (s *Service) RateDinner(dinnerID, userID string, rating int) error {
 		return err
 	}
 
+	// Initialize the Ratings map if it's nil
+	if dinner.Ratings == nil {
+		s.logger.Info("Initializing Ratings map for dinner %s", dinnerID)
+		dinner.Ratings = make(map[string]int)
+	}
+
 	dinner.Ratings[userID] = rating
 
 	// Calculate average rating
@@ -284,6 +296,12 @@ func (s *Service) UpdateUsedIngredients(dinnerID string, ingredients []string) e
 	err := s.store.Get(dinnerID, &dinner)
 	if err != nil {
 		return err
+	}
+
+	// Initialize the Ratings map if it's nil (just in case)
+	if dinner.Ratings == nil {
+		s.logger.Info("Initializing Ratings map for dinner %s during UpdateUsedIngredients", dinnerID)
+		dinner.Ratings = make(map[string]int)
 	}
 
 	dinner.UsedIngredients = ingredients
