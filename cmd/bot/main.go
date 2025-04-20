@@ -593,10 +593,32 @@ func main() {
 
 				for i := 0; i < limit; i++ {
 					cook := cooks[i]
-					// Use username if available, otherwise use user ID
+					// Use username if available, otherwise try to get a friendly name
 					displayName := cook.Username
 					if displayName == "" {
-						displayName = fmt.Sprintf("User %s", cook.UserID)
+						// Try to convert user ID to integer for Telegram API
+						userIDInt, err := strconv.ParseInt(cook.UserID, 10, 64)
+						if err == nil {
+							// Try to get chat member info
+							member, err := bot.GetChatMember(chatID, userIDInt)
+							if err == nil && member.User != nil {
+								// Use username if available, otherwise use first name
+								if member.User.UserName != "" {
+									displayName = "@" + member.User.UserName
+									// Update the stored username for future use
+									statsService.UpdateCookStats(chatID, cook.UserID, member.User.UserName, 0)
+								} else if member.User.FirstName != "" {
+									displayName = member.User.FirstName
+									// Update the stored username for future use
+									statsService.UpdateCookStats(chatID, cook.UserID, member.User.FirstName, 0)
+								}
+							}
+						}
+
+						// If we still don't have a display name, use the user ID
+						if displayName == "" {
+							displayName = fmt.Sprintf("User %s", cook.UserID)
+						}
 					}
 					msgText += fmt.Sprintf("%d. %s - %.1f stars (%d meals)\n", i+1, displayName, cook.AvgRating, cook.CookCount)
 				}
@@ -626,10 +648,32 @@ func main() {
 
 				for i := 0; i < limit; i++ {
 					helper := helpers[i]
-					// Use username if available, otherwise use user ID
+					// Use username if available, otherwise try to get a friendly name
 					displayName := helper.Username
 					if displayName == "" {
-						displayName = fmt.Sprintf("User %s", helper.UserID)
+						// Try to convert user ID to integer for Telegram API
+						userIDInt, err := strconv.ParseInt(helper.UserID, 10, 64)
+						if err == nil {
+							// Try to get chat member info
+							member, err := bot.GetChatMember(chatID, userIDInt)
+							if err == nil && member.User != nil {
+								// Use username if available, otherwise use first name
+								if member.User.UserName != "" {
+									displayName = "@" + member.User.UserName
+									// Update the stored username for future use
+									statsService.UpdateHelperStats(chatID, helper.UserID, member.User.UserName)
+								} else if member.User.FirstName != "" {
+									displayName = member.User.FirstName
+									// Update the stored username for future use
+									statsService.UpdateHelperStats(chatID, helper.UserID, member.User.FirstName)
+								}
+							}
+						}
+
+						// If we still don't have a display name, use the user ID
+						if displayName == "" {
+							displayName = fmt.Sprintf("User %s", helper.UserID)
+						}
 					}
 					msgText += fmt.Sprintf("%d. %s - %d shopping trips\n", i+1, displayName, helper.ShoppingCount)
 				}
@@ -674,10 +718,32 @@ func main() {
 					if suggester.SuggestionCount > 0 {
 						rate = float64(suggester.AcceptedCount) / float64(suggester.SuggestionCount) * 100
 					}
-					// Use username if available, otherwise use user ID
+					// Use username if available, otherwise try to get a friendly name
 					displayName := suggester.Username
 					if displayName == "" {
-						displayName = fmt.Sprintf("User %s", suggester.UserID)
+						// Try to convert user ID to integer for Telegram API
+						userIDInt, err := strconv.ParseInt(suggester.UserID, 10, 64)
+						if err == nil {
+							// Try to get chat member info
+							member, err := bot.GetChatMember(chatID, userIDInt)
+							if err == nil && member.User != nil {
+								// Use username if available, otherwise use first name
+								if member.User.UserName != "" {
+									displayName = "@" + member.User.UserName
+									// Update the stored username for future use
+									statsService.UpdateSuggesterStats(chatID, suggester.UserID, member.User.UserName, false)
+								} else if member.User.FirstName != "" {
+									displayName = member.User.FirstName
+									// Update the stored username for future use
+									statsService.UpdateSuggesterStats(chatID, suggester.UserID, member.User.FirstName, false)
+								}
+							}
+						}
+
+						// If we still don't have a display name, use the user ID
+						if displayName == "" {
+							displayName = fmt.Sprintf("User %s", suggester.UserID)
+						}
 					}
 					msgText += fmt.Sprintf("%d. %s - %.1f%% acceptance (%d/%d)\n", i+1, displayName, rate, suggester.AcceptedCount, suggester.SuggestionCount)
 				}

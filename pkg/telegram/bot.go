@@ -157,3 +157,18 @@ func (b *Bot) GetChatMemberCount(chatID int64) (int, error) {
 
 	return count, nil
 }
+
+// GetChatMember gets information about a member of a chat
+func (b *Bot) GetChatMember(chatID int64, userID int64) (*tgbotapi.ChatMember, error) {
+	member, err := b.api.GetChatMember(tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: chatID,
+			UserID: userID,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chat member: %w", err)
+	}
+
+	return &member, nil
+}
