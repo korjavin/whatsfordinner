@@ -56,7 +56,7 @@
 
 ## 9. GitHub Actions & Containerization
 - [x] Setup Dockerfile
-- [ ] Setup GitHub Actions CI/CD
+- [x] Setup GitHub Actions CI/CD
 - [x] Podman Compose config for local running
 
 

@@ -1,0 +1,16 @@
+# These owners will be the default owners for everything in the repo.
+# Unless a later match takes precedence, they will be requested for
+# review when someone opens a pull request.
+*       @korjavin
+
+# CI/CD workflow files
+.github/workflows/    @korjavin
+
+# Docker related files
+Dockerfile            @korjavin
+podman-compose.yml    @korjavin
+
+# Go code
+*.go                  @korjavin
+go.mod                @korjavin
+go.sum                @korjavin
