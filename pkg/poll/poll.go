@@ -327,3 +327,53 @@ func (s *Service) FindChannelByPollID(pollID string) (int64, error) {
 
 	return 0, fmt.Errorf("channel not found for poll %s", pollID)
 }
+
+// GetCurrentVote gets the current vote for a channel
+func (s *Service) GetCurrentVote(channelID int64) (*models.VoteState, error) {
+	channelKey := fmt.Sprintf("channel:%d", channelID)
+	var channelState models.ChannelState
+	err := s.store.Get(channelKey, &channelState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get channel state: %w", err)
+	}
+
+	if channelState.CurrentVote == nil {
+		return nil, fmt.Errorf("no current vote for channel %d", channelID)
+	}
+
+	return channelState.CurrentVote, nil
+}
+
+// AddOptionToVote adds a new option to an existing vote and returns the updated vote
+// Note: This doesn't update the actual Telegram poll - that needs to be done separately
+func (s *Service) AddOptionToVote(channelID int64, pollID string, newOption string) (*models.VoteState, error) {
+	voteKey := fmt.Sprintf("vote:%d:%s", channelID, pollID)
+	var vote models.VoteState
+	err := s.store.Get(voteKey, &vote)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get vote: %w", err)
+	}
+
+	// Check if the vote has already ended
+	if !vote.EndedAt.IsZero() {
+		return nil, fmt.Errorf("vote has already ended")
+	}
+
+	// Check if the option already exists
+	for _, option := range vote.Options {
+		if option == newOption {
+			return nil, fmt.Errorf("option already exists: %s", newOption)
+		}
+	}
+
+	// Add the new option
+	vote.Options = append(vote.Options, newOption)
+
+	// Save the updated vote
+	err = s.store.Set(voteKey, vote)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save updated vote: %w", err)
+	}
+
+	return &vote, nil
+}

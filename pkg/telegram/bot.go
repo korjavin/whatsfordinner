@@ -172,3 +172,13 @@ func (b *Bot) GetChatMember(chatID int64, userID int64) (*tgbotapi.ChatMember, e
 
 	return &member, nil
 }
+
+// StopPoll stops a poll in a chat
+// Note: As of the current Telegram Bot API, there's no direct way to stop a poll
+// This method is added for future compatibility if Telegram adds this functionality
+func (b *Bot) StopPoll(chatID int64, messageID int) error {
+	// Currently, Telegram doesn't provide a way to stop polls programmatically
+	// We can only mark them as closed in our database and inform users
+	b.logger.Info("Attempting to stop poll in chat %d, message %d (not supported by Telegram API)", chatID, messageID)
+	return nil
+}

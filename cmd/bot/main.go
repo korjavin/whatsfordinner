@@ -471,7 +471,72 @@ func main() {
 					detailedMsg += "\n"
 				}
 
-				detailedMsg += "Your suggestion will be included in future dinner polls."
+				// Check if there's an ongoing poll in the channel
+				currentVote, err := pollService.GetCurrentVote(chatID)
+				if err == nil && currentVote != nil && currentVote.EndedAt.IsZero() {
+					// There's an active poll, add the suggestion to it
+					log.Info("Adding suggestion '%s' to ongoing poll %s", suggestion.Name, currentVote.PollID)
+
+					// Create a new poll with the existing options plus the new suggestion
+					newOptions := append(currentVote.Options, suggestion.Name)
+
+					// Create a new poll with the updated options
+					newPollMsg, err := bot.CreatePoll(chatID, "What should we cook tonight?", newOptions)
+					if err != nil {
+						log.Error("Failed to create updated poll: %v", err)
+						detailedMsg += "Your suggestion will be included in future dinner polls."
+					} else {
+						// End the old poll in our database
+						_, winningOption, _ := pollService.GetVoteResults(chatID, currentVote.PollID)
+						pollService.EndVote(chatID, currentVote.PollID, winningOption)
+
+						// Try to stop the poll in Telegram (currently not supported by Telegram API)
+						bot.StopPoll(chatID, currentVote.MessageID)
+
+						// Send a message to indicate the old poll is no longer active
+						bot.SendMessage(chatID, "⚠️ The previous dinner poll has been replaced with a new one that includes the latest suggestion.")
+
+						// Create a new vote state with the new poll
+						newPollID := newPollMsg.Poll.ID
+						pollChannelMap[newPollID] = chatID
+
+						// Copy existing votes to the new poll
+						newVote, err := pollService.CreateVote(chatID, newPollID, newPollMsg.MessageID, newOptions)
+						if err != nil {
+							log.Error("Failed to create new vote state: %v", err)
+						}
+
+						// Copy existing votes to the new poll (for options that still exist)
+						for userID, option := range currentVote.Votes {
+							// Check if the option still exists in the new poll
+							optionExists := false
+							for _, newOption := range newOptions {
+								if option == newOption {
+									optionExists = true
+									break
+								}
+							}
+
+							if optionExists {
+								newVote.Votes[userID] = option
+							}
+						}
+
+						// Save the updated vote
+						err = store.Set(fmt.Sprintf("vote:%d:%s", chatID, newPollID), newVote)
+						if err != nil {
+							log.Error("Failed to save updated vote: %v", err)
+						}
+
+						// Inform users about the updated poll
+						bot.SendMessage(chatID, fmt.Sprintf("🔄 The dinner poll has been updated with a new suggestion: *%s*. Please vote in the new poll above!", suggestion.Name))
+
+						detailedMsg += "Your suggestion has been added to the current dinner poll!"
+					}
+				} else {
+					// No active poll, just store the suggestion for future polls
+					detailedMsg += "Your suggestion will be included in future dinner polls."
+				}
 
 				// Edit the processing message with the detailed information
 				bot.EditMessage(chatID, processingMsg.MessageID, detailedMsg)
