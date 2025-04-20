@@ -20,6 +20,7 @@ import (
 	"github.com/korjavin/whatsfordinner/pkg/models"
 	"github.com/korjavin/whatsfordinner/pkg/openai"
 	"github.com/korjavin/whatsfordinner/pkg/poll"
+	"github.com/korjavin/whatsfordinner/pkg/scheduler"
 	"github.com/korjavin/whatsfordinner/pkg/state"
 	"github.com/korjavin/whatsfordinner/pkg/stats"
 	"github.com/korjavin/whatsfordinner/pkg/storage"
@@ -59,8 +60,7 @@ func main() {
 
 	// Initialize services
 	fridgeService := fridge.New(store)
-	// We're not using dinnerService directly anymore, using OpenAI client instead
-	// dinnerService := dinner.New(store, fridgeService, openaiClient)
+	dinnerService := dinner.New(store, fridgeService, openaiClient)
 	pollService := poll.New(store)
 	messageService := messages.New(openaiClient)
 	stateManager := state.New()
@@ -73,6 +73,10 @@ func main() {
 		log.Error("Failed to initialize Telegram bot: %v", err)
 		os.Exit(1)
 	}
+
+	// Initialize and start the scheduler
+	schedulerService := scheduler.New(store, bot, fridgeService, pollService, dinnerService, openaiClient, cfg.Cuisines)
+	schedulerService.Start()
 
 	// Setup command handlers
 	commandHandlers := map[string]telegram.CommandHandler{
@@ -1657,6 +1661,9 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Info("Shutting down...")
+		// Stop the scheduler
+		schedulerService.Stop()
+		// Close the database
 		store.Close()
 		os.Exit(0)
 	}()

@@ -59,15 +59,6 @@
 - [ ] Setup GitHub Actions CI/CD
 - [x] Podman Compose config for local running
 
-## 10. Tests
-- [ ] Unit tests for data models and logic
-- [ ] Behavioral tests with goconvey or better (e.g., gotest.tools/assert)
-- [ ] Add dialogue tests for voting, cooking, fridge, shopping
-
-## 11. UX Polish
-- [ ] Design all interactions to work well on mobile
-- [ ] Use inline buttons and short messages
-- [ ] Add emojis for fun and readability
 
 ## 12. Caching
 - [ ] Cache dish suggestions
