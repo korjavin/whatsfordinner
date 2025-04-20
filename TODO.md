@@ -1,0 +1,76 @@
+# TODO List for `whatsfordinner` Telegram Bot
+
+## 1. Project Setup
+- [x] Initialize Go module
+- [ ] Setup `.env` configuration parsing (Telegram token, OpenAI config, etc.)
+- [ ] Embed BadgerDB as local storage
+- [ ] Telegram bot client (polling)
+- [ ] Logging setup (structured + timestamps)
+
+## 2. Data Models
+- [ ] ChannelState: track per-channel data
+- [ ] Fridge: current ingredients list
+- [ ] Dish: name, ingredients, instructions, cuisine type
+- [ ] VoteState: current voting process, participants
+- [ ] CookStatus: cooking progress
+- [ ] Statistics: cook, helper, suggester leaderboards
+
+## 3. Bot Command Handlers
+- [ ] `/dinner` – Suggest dinner, start poll, manage vote lifecycle
+- [ ] `/suggest` – Allow manual dish suggestion
+- [ ] `/fridge` – Show current ingredients
+- [ ] `/sync_fridge` – Reinitialize fridge
+- [ ] `/add_photo` – Use photo to extract ingredients
+- [ ] `/stats` – Show family leaderboards
+
+## 4. Voting and Cooking Flow
+- [ ] Suggest 2–3 dishes with matching fridge contents and cuisine filter
+- [ ] Create Telegram poll, wait for majority vote
+- [ ] Ask willing cook from the "pro" voters
+- [ ] If none agree, retry cooking step
+- [ ] If still nobody agrees, cancel vote and mark "no dinner today"
+- [ ] Pick random cook from volunteers and share instructions
+- [ ] Provide callbacks for more details, progress updates
+- [ ] Confirm when dinner is ready
+
+## 5. Fridge Inventory
+- [ ] Initial entry via chat
+- [ ] AI image extraction (OpenAI Vision API)
+- [ ] Ingredient used marking via cook UI
+- [ ] Sync fridge items manually with buttons ("We don’t have this anymore")
+
+## 6. Shopping Flow
+- [ ] Check for missing ingredients
+- [ ] List what's needed, offer "I will buy" button
+- [ ] Broadcast confirmation to family
+- [ ] Confirm when shopping is done
+
+## 7. Feedback Collection
+- [ ] Post-dinner rating collection
+- [ ] Update statistics: best cook, helper, suggester
+
+## 8. Persistent State Management
+- [ ] Use per-channel keying
+- [ ] Safe concurrent access
+
+## 9. GitHub Actions & Containerization
+- [ ] Setup Dockerfile
+- [ ] Setup GitHub Actions CI/CD
+- [ ] Podman Compose config for local running
+
+## 10. Tests
+- [ ] Unit tests for data models and logic
+- [ ] Behavioral tests with goconvey or better (e.g., gotest.tools/assert)
+- [ ] Add dialogue tests for voting, cooking, fridge, shopping
+
+## 11. UX Polish
+- [ ] Design all interactions to work well on mobile
+- [ ] Use inline buttons and short messages
+- [ ] Add emojis for fun and readability
+
+## 12. Final Touches
+- [ ] Admin-only reset of state
+- [ ] Load/save config for cuisines per channel
+- [ ] Automatic cleanup of old polls/dinners
+- [ ] Backup/export fridge and stats
+
