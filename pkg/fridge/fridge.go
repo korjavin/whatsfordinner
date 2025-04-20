@@ -26,7 +26,7 @@ func New(store *storage.Store) *Service {
 // GetFridge retrieves the fridge for a channel
 func (s *Service) GetFridge(channelID int64) (*models.Fridge, error) {
 	fridgeKey := fmt.Sprintf("fridge:%d", channelID)
-	
+
 	var fridge models.Fridge
 	err := s.store.Get(fridgeKey, &fridge)
 	if err != nil {
@@ -37,31 +37,41 @@ func (s *Service) GetFridge(channelID int64) (*models.Fridge, error) {
 			Ingredients: make(map[string]models.Ingredient),
 			LastUpdated: time.Now(),
 		}
-		
+
 		if err := s.store.Set(fridgeKey, fridge); err != nil {
 			return nil, fmt.Errorf("failed to create fridge: %w", err)
 		}
 	}
-	
+
 	return &fridge, nil
 }
 
 // AddIngredient adds an ingredient to the fridge
 func (s *Service) AddIngredient(channelID int64, name, quantity string) error {
+	s.logger.Info("Adding ingredient to fridge %d: %s (quantity: %s)", channelID, name, quantity)
+
 	fridge, err := s.GetFridge(channelID)
 	if err != nil {
+		s.logger.Error("Failed to get fridge: %v", err)
 		return err
 	}
-	
+
 	fridge.Ingredients[name] = models.Ingredient{
 		Name:     name,
 		Quantity: quantity,
 		AddedAt:  time.Now(),
 	}
-	
+
 	fridge.LastUpdated = time.Now()
-	
-	return s.store.Set(fridge.ID, fridge)
+
+	err = s.store.Set(fridge.ID, fridge)
+	if err != nil {
+		s.logger.Error("Failed to save fridge: %v", err)
+		return err
+	}
+
+	s.logger.Info("Successfully added ingredient %s to fridge %d", name, channelID)
+	return nil
 }
 
 // RemoveIngredient removes an ingredient from the fridge
@@ -70,10 +80,10 @@ func (s *Service) RemoveIngredient(channelID int64, name string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	delete(fridge.Ingredients, name)
 	fridge.LastUpdated = time.Now()
-	
+
 	return s.store.Set(fridge.ID, fridge)
 }
 
@@ -83,12 +93,12 @@ func (s *Service) ListIngredients(channelID int64) ([]models.Ingredient, error) 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	ingredients := make([]models.Ingredient, 0, len(fridge.Ingredients))
 	for _, ingredient := range fridge.Ingredients {
 		ingredients = append(ingredients, ingredient)
 	}
-	
+
 	return ingredients, nil
 }
 
@@ -98,28 +108,28 @@ func (s *Service) HasIngredients(channelID int64, ingredientNames []string) (boo
 	if err != nil {
 		return false, nil, err
 	}
-	
+
 	missing := make([]string, 0)
 	for _, name := range ingredientNames {
 		if _, ok := fridge.Ingredients[name]; !ok {
 			missing = append(missing, name)
 		}
 	}
-	
+
 	return len(missing) == 0, missing, nil
 }
 
 // ResetFridge resets the fridge for a channel
 func (s *Service) ResetFridge(channelID int64) error {
 	fridgeKey := fmt.Sprintf("fridge:%d", channelID)
-	
+
 	fridge := models.Fridge{
 		ID:          fridgeKey,
 		ChannelID:   channelID,
 		Ingredients: make(map[string]models.Ingredient),
 		LastUpdated: time.Now(),
 	}
-	
+
 	return s.store.Set(fridgeKey, fridge)
 }
 
@@ -129,7 +139,7 @@ func (s *Service) UpdateIngredients(channelID int64, ingredients map[string]stri
 	if err != nil {
 		return err
 	}
-	
+
 	for name, quantity := range ingredients {
 		fridge.Ingredients[name] = models.Ingredient{
 			Name:     name,
@@ -137,9 +147,9 @@ func (s *Service) UpdateIngredients(channelID int64, ingredients map[string]stri
 			AddedAt:  time.Now(),
 		}
 	}
-	
+
 	fridge.LastUpdated = time.Now()
-	
+
 	return s.store.Set(fridge.ID, fridge)
 }
 
@@ -149,12 +159,12 @@ func (s *Service) RemoveIngredients(channelID int64, ingredientNames []string) e
 	if err != nil {
 		return err
 	}
-	
+
 	for _, name := range ingredientNames {
 		delete(fridge.Ingredients, name)
 	}
-	
+
 	fridge.LastUpdated = time.Now()
-	
+
 	return s.store.Set(fridge.ID, fridge)
 }

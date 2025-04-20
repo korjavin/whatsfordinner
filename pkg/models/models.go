@@ -6,20 +6,20 @@ import (
 
 // ChannelState represents the state of a Telegram channel
 type ChannelState struct {
-	ChannelID     int64     `json:"channel_id"`
-	FridgeID      string    `json:"fridge_id"`
-	CurrentDinner *Dinner   `json:"current_dinner,omitempty"`
+	ChannelID     int64      `json:"channel_id"`
+	FridgeID      string     `json:"fridge_id"`
+	CurrentDinner *Dinner    `json:"current_dinner,omitempty"`
 	CurrentVote   *VoteState `json:"current_vote,omitempty"`
-	LastActivity  time.Time `json:"last_activity"`
-	Cuisines      []string  `json:"cuisines"`
+	LastActivity  time.Time  `json:"last_activity"`
+	Cuisines      []string   `json:"cuisines"`
 }
 
 // Fridge represents the ingredients available in a channel's fridge
 type Fridge struct {
-	ID          string               `json:"id"`
-	ChannelID   int64                `json:"channel_id"`
+	ID          string                `json:"id"`
+	ChannelID   int64                 `json:"channel_id"`
 	Ingredients map[string]Ingredient `json:"ingredients"`
-	LastUpdated time.Time            `json:"last_updated"`
+	LastUpdated time.Time             `json:"last_updated"`
 }
 
 // Ingredient represents a single ingredient in the fridge
@@ -39,35 +39,35 @@ type Dish struct {
 
 // VoteState represents the state of a vote
 type VoteState struct {
-	PollID       string            `json:"poll_id"`
-	MessageID    int               `json:"message_id"`
-	Options      []string          `json:"options"`
-	Votes        map[string]string `json:"votes"` // UserID -> Option
-	StartedAt    time.Time         `json:"started_at"`
-	EndedAt      time.Time         `json:"ended_at,omitempty"`
-	WinningDish  string            `json:"winning_dish,omitempty"`
-	CookVolunteers []string        `json:"cook_volunteers,omitempty"`
-	SelectedCook string            `json:"selected_cook,omitempty"`
+	PollID         string            `json:"poll_id"`
+	MessageID      int               `json:"message_id"`
+	Options        []string          `json:"options"`
+	Votes          map[string]string `json:"votes"` // UserID -> Option
+	StartedAt      time.Time         `json:"started_at"`
+	EndedAt        time.Time         `json:"ended_at,omitempty"`
+	WinningDish    string            `json:"winning_dish,omitempty"`
+	CookVolunteers []string          `json:"cook_volunteers,omitempty"`
+	SelectedCook   string            `json:"selected_cook,omitempty"`
 }
 
 // Dinner represents a dinner event
 type Dinner struct {
-	ID           string    `json:"id"`
-	ChannelID    int64     `json:"channel_id"`
-	Dish         Dish      `json:"dish"`
-	Cook         string    `json:"cook,omitempty"` // UserID of the cook
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at,omitempty"`
-	Ratings      map[string]int `json:"ratings,omitempty"` // UserID -> Rating (1-5)
-	AverageRating float64   `json:"average_rating,omitempty"`
-	UsedIngredients []string `json:"used_ingredients,omitempty"`
+	ID              string         `json:"id"`
+	ChannelID       int64          `json:"channel_id"`
+	Dish            Dish           `json:"dish"`
+	Cook            string         `json:"cook,omitempty"` // UserID of the cook
+	StartedAt       time.Time      `json:"started_at"`
+	FinishedAt      time.Time      `json:"finished_at,omitempty"`
+	Ratings         map[string]int `json:"ratings,omitempty"` // UserID -> Rating (1-5)
+	AverageRating   float64        `json:"average_rating,omitempty"`
+	UsedIngredients []string       `json:"used_ingredients,omitempty"`
 }
 
 // Statistics represents the statistics for a channel
 type Statistics struct {
-	ChannelID    int64                `json:"channel_id"`
-	CookStats    map[string]CookStat  `json:"cook_stats"` // UserID -> CookStat
-	HelperStats  map[string]HelperStat `json:"helper_stats"` // UserID -> HelperStat
+	ChannelID      int64                    `json:"channel_id"`
+	CookStats      map[string]CookStat      `json:"cook_stats"`      // UserID -> CookStat
+	HelperStats    map[string]HelperStat    `json:"helper_stats"`    // UserID -> HelperStat
 	SuggesterStats map[string]SuggesterStat `json:"suggester_stats"` // UserID -> SuggesterStat
 }
 
@@ -81,13 +81,26 @@ type CookStat struct {
 
 // HelperStat represents the statistics for a shopping helper
 type HelperStat struct {
-	UserID       string `json:"user_id"`
+	UserID        string `json:"user_id"`
 	ShoppingCount int    `json:"shopping_count"`
 }
 
 // SuggesterStat represents the statistics for a dish suggester
 type SuggesterStat struct {
-	UserID        string `json:"user_id"`
-	SuggestionCount int   `json:"suggestion_count"`
-	AcceptedCount   int   `json:"accepted_count"`
+	UserID          string `json:"user_id"`
+	SuggestionCount int    `json:"suggestion_count"`
+	AcceptedCount   int    `json:"accepted_count"`
+}
+
+// SuggestedDish represents a dish suggested by a user
+type SuggestedDish struct {
+	ID          string    `json:"id"`
+	ChannelID   int64     `json:"channel_id"`
+	UserID      string    `json:"user_id"`
+	Username    string    `json:"username"`
+	Name        string    `json:"name"`
+	Cuisine     string    `json:"cuisine"`
+	Description string    `json:"description"`
+	SuggestedAt time.Time `json:"suggested_at"`
+	UsedInPoll  bool      `json:"used_in_poll"`
 }

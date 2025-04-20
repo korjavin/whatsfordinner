@@ -133,3 +133,13 @@ func (b *Bot) EditMessageKeyboard(chatID int64, messageID int, keyboard tgbotapi
 func (b *Bot) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
 	return b.api.Send(c)
 }
+
+// GetFileURL gets the URL for a file
+func (b *Bot) GetFileURL(fileID string) (string, error) {
+	file, err := b.api.GetFile(tgbotapi.FileConfig{FileID: fileID})
+	if err != nil {
+		return "", fmt.Errorf("failed to get file: %w", err)
+	}
+
+	return file.Link(b.api.Token), nil
+}

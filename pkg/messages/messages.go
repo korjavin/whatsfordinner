@@ -112,9 +112,9 @@ func formatDishes(dishes []string) string {
 }
 
 func formatIngredients(ingredients []string) string {
-	result := ""
+	result := "🧊 Here's what's in your fridge:\n\n"
 	for _, ingredient := range ingredients {
-		result += "- " + ingredient + "\n"
+		result += "• " + ingredient + "\n"
 	}
 	return result
 }
