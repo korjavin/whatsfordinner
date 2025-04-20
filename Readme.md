@@ -61,6 +61,36 @@ Via environment variables:
 - GitHub repo: https://github.com/korjavin/whatsfordinner
 - Build: GitHub Actions with Docker build pipeline
 
+### Running with Docker
+
+You can run the bot using the pre-built Docker image from GitHub Container Registry:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/korjavin/whatsfordinner:main
+
+# Or with podman
+podman pull ghcr.io/korjavin/whatsfordinner:main
+
+# Run with environment variables
+docker run -d \
+  -v ./data:/app/data \
+  -e BOT_TOKEN=your_telegram_bot_token \
+  -e OPENAI_API_KEY=your_openai_api_key \
+  -e OPENAI_API_BASE=https://api.openai.com/v1 \
+  -e OPENAI_MODEL=gpt-3.5-turbo \
+  -p 8083:8080 \
+  ghcr.io/korjavin/whatsfordinner:main
+```
+
+### CI/CD Pipeline
+
+The project uses GitHub Actions to automatically build and push Docker images to GitHub Container Registry (GHCR):
+
+- Images are built on every push to the `main` branch
+- Tagged releases (e.g., `v1.0.0`) create versioned Docker images
+- Pull requests build images but don't push them to the registry
+
 ---
 
 ## UX Guidelines
