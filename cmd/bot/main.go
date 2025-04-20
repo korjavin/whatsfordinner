@@ -21,6 +21,7 @@ import (
 	"github.com/korjavin/whatsfordinner/pkg/openai"
 	"github.com/korjavin/whatsfordinner/pkg/poll"
 	"github.com/korjavin/whatsfordinner/pkg/state"
+	"github.com/korjavin/whatsfordinner/pkg/stats"
 	"github.com/korjavin/whatsfordinner/pkg/storage"
 	"github.com/korjavin/whatsfordinner/pkg/suggest"
 	"github.com/korjavin/whatsfordinner/pkg/telegram"
@@ -64,6 +65,7 @@ func main() {
 	messageService := messages.New(openaiClient)
 	stateManager := state.New()
 	suggestService := suggest.New(store)
+	statsService := stats.New(store)
 
 	// Initialize Telegram bot
 	bot, err := telegram.New(cfg.BotToken)
@@ -477,6 +479,211 @@ func main() {
 				// No dish name provided, ask for it
 				bot.SendMessage(chatID, "🍴 You can suggest a dish for dinner! Please use the command like this: /suggest Lasagna")
 			}
+		},
+		"add": func(message *tgbotapi.Message) {
+			// Extract ingredients from text and add them to the fridge
+			chatID := message.Chat.ID
+
+			// Check if there's text in the command
+			args := message.CommandArguments()
+			if args == "" {
+				// No text provided, ask for it
+				bot.SendMessage(chatID, "🍎 Please provide a list of ingredients to add to your fridge. For example: /add eggs, milk, bread")
+				return
+			}
+
+			// Send a processing message
+			processingMsg, _ := bot.SendMessage(chatID, "🔍 Processing your ingredients... This might take a moment.")
+
+			// Parse ingredients from the text
+			ingredients, err := openaiClient.ParseIngredientsFromText(args)
+			if err != nil {
+				log.Error("Failed to parse ingredients: %v", err)
+				bot.EditMessage(chatID, processingMsg.MessageID, "😢 Sorry, I couldn't understand the ingredients. Please try again with a clearer list.")
+				return
+			}
+
+			if len(ingredients) == 0 {
+				bot.EditMessage(chatID, processingMsg.MessageID, "I couldn't find any ingredients in your message. Please try again with a list of ingredients.")
+				return
+			}
+
+			// Add ingredients to the fridge
+			for _, ingredient := range ingredients {
+				err := fridgeService.AddIngredient(chatID, ingredient, "")
+				if err != nil {
+					log.Error("Failed to add ingredient %s: %v", ingredient, err)
+				}
+			}
+
+			// Edit the processing message to show the results
+			bot.EditMessage(chatID, processingMsg.MessageID, fmt.Sprintf("✅ Added %d ingredients to your fridge: %s", len(ingredients), strings.Join(ingredients, ", ")))
+
+			// Show the updated fridge
+			ingredientList, err := fridgeService.ListIngredients(chatID)
+			if err != nil {
+				log.Error("Failed to list ingredients: %v", err)
+				return
+			}
+
+			if len(ingredientList) == 0 {
+				bot.SendMessage(chatID, "Your fridge is still empty. Try adding ingredients with text or better photos.")
+				return
+			}
+
+			// Create a formatted message with all ingredients
+			msgText := "🧊 Here's what's in your fridge now:\n\n"
+
+			// Sort ingredients alphabetically
+			sort.Slice(ingredientList, func(i, j int) bool {
+				return ingredientList[i].Name < ingredientList[j].Name
+			})
+
+			for _, ingredient := range ingredientList {
+				if ingredient.Quantity != "" {
+					msgText += fmt.Sprintf("• %s (%s)\n", ingredient.Name, ingredient.Quantity)
+				} else {
+					msgText += fmt.Sprintf("• %s\n", ingredient.Name)
+				}
+			}
+
+			bot.SendMessage(chatID, msgText)
+		},
+		"stats": func(message *tgbotapi.Message) {
+			// Show family leaderboards
+			chatID := message.Chat.ID
+
+			// Get statistics
+			stats, err := statsService.GetStatistics(chatID)
+			if err != nil {
+				log.Error("Failed to get statistics: %v", err)
+				bot.SendMessage(chatID, "😢 Sorry, I couldn't retrieve the statistics right now. Please try again later.")
+				return
+			}
+
+			// Check if we have any statistics
+			if len(stats.CookStats) == 0 && len(stats.HelperStats) == 0 && len(stats.SuggesterStats) == 0 {
+				bot.SendMessage(chatID, "📊 No statistics available yet. Start cooking and rating meals to build up your family leaderboards!")
+				return
+			}
+
+			// Create a formatted message with statistics
+			msgText := "🏆 *Family Leaderboards*\n\n"
+
+			// Add cook statistics
+			if len(stats.CookStats) > 0 {
+				msgText += "👨‍🍳 *Top Cooks*\n"
+
+				// Convert map to slice for sorting
+				cooks := make([]models.CookStat, 0, len(stats.CookStats))
+				for _, cookStat := range stats.CookStats {
+					cooks = append(cooks, cookStat)
+				}
+
+				// Sort by average rating (descending)
+				sort.Slice(cooks, func(i, j int) bool {
+					return cooks[i].AvgRating > cooks[j].AvgRating
+				})
+
+				// Take the top 3 cooks
+				limit := 3
+				if len(cooks) < limit {
+					limit = len(cooks)
+				}
+
+				for i := 0; i < limit; i++ {
+					cook := cooks[i]
+					// Use username if available, otherwise use user ID
+					displayName := cook.Username
+					if displayName == "" {
+						displayName = fmt.Sprintf("User %s", cook.UserID)
+					}
+					msgText += fmt.Sprintf("%d. %s - %.1f stars (%d meals)\n", i+1, displayName, cook.AvgRating, cook.CookCount)
+				}
+				msgText += "\n"
+			}
+
+			// Add helper statistics
+			if len(stats.HelperStats) > 0 {
+				msgText += "🛒 *Top Shoppers*\n"
+
+				// Convert map to slice for sorting
+				helpers := make([]models.HelperStat, 0, len(stats.HelperStats))
+				for _, helperStat := range stats.HelperStats {
+					helpers = append(helpers, helperStat)
+				}
+
+				// Sort by shopping count (descending)
+				sort.Slice(helpers, func(i, j int) bool {
+					return helpers[i].ShoppingCount > helpers[j].ShoppingCount
+				})
+
+				// Take the top 3 helpers
+				limit := 3
+				if len(helpers) < limit {
+					limit = len(helpers)
+				}
+
+				for i := 0; i < limit; i++ {
+					helper := helpers[i]
+					// Use username if available, otherwise use user ID
+					displayName := helper.Username
+					if displayName == "" {
+						displayName = fmt.Sprintf("User %s", helper.UserID)
+					}
+					msgText += fmt.Sprintf("%d. %s - %d shopping trips\n", i+1, displayName, helper.ShoppingCount)
+				}
+				msgText += "\n"
+			}
+
+			// Add suggester statistics
+			if len(stats.SuggesterStats) > 0 {
+				msgText += "💡 *Top Suggesters*\n"
+
+				// Convert map to slice for sorting
+				suggesters := make([]models.SuggesterStat, 0, len(stats.SuggesterStats))
+				for _, suggesterStat := range stats.SuggesterStats {
+					suggesters = append(suggesters, suggesterStat)
+				}
+
+				// Sort by acceptance rate (descending)
+				sort.Slice(suggesters, func(i, j int) bool {
+					// Calculate acceptance rates
+					rateI := 0.0
+					if suggesterStat := suggesters[i]; suggesterStat.SuggestionCount > 0 {
+						rateI = float64(suggesterStat.AcceptedCount) / float64(suggesterStat.SuggestionCount)
+					}
+
+					rateJ := 0.0
+					if suggesterStat := suggesters[j]; suggesterStat.SuggestionCount > 0 {
+						rateJ = float64(suggesterStat.AcceptedCount) / float64(suggesterStat.SuggestionCount)
+					}
+
+					return rateI > rateJ
+				})
+
+				// Take the top 3 suggesters
+				limit := 3
+				if len(suggesters) < limit {
+					limit = len(suggesters)
+				}
+
+				for i := 0; i < limit; i++ {
+					suggester := suggesters[i]
+					rate := 0.0
+					if suggester.SuggestionCount > 0 {
+						rate = float64(suggester.AcceptedCount) / float64(suggester.SuggestionCount) * 100
+					}
+					// Use username if available, otherwise use user ID
+					displayName := suggester.Username
+					if displayName == "" {
+						displayName = fmt.Sprintf("User %s", suggester.UserID)
+					}
+					msgText += fmt.Sprintf("%d. %s - %.1f%% acceptance (%d/%d)\n", i+1, displayName, rate, suggester.AcceptedCount, suggester.SuggestionCount)
+				}
+			}
+
+			bot.SendMessage(chatID, msgText)
 		},
 		// TODO: Implement other command handlers
 	}
@@ -994,6 +1201,17 @@ func main() {
 			// Continue anyway
 		}
 
+		// Update cook statistics with the username
+		err = statsService.UpdateCookStats(chatID, userID, username, 0) // No rating yet
+		if err != nil {
+			log.Error("Failed to update cook stats: %v", err)
+			// Continue anyway
+		}
+
+		// Update suggester statistics if this was a user-suggested dish
+		// We would need to check if the dish was suggested by a user and update their stats
+		// For now, we'll just update the cook's stats when the dinner is rated
+
 		// Send cooking instructions
 		msgText := fmt.Sprintf("🍳 *Cooking Instructions for %s*\n\n", dishName)
 
@@ -1157,6 +1375,23 @@ func main() {
 			return
 		}
 
+		// Update cook statistics
+		cookID := dinnerEvent.Cook
+
+		// Try to get the cook's username from the chat members
+		cookUsername := ""
+		// First check if the current user is the cook
+		if cookID == userID {
+			cookUsername = username
+		}
+
+		// Update cook statistics
+		err = statsService.UpdateCookStats(chatID, cookID, cookUsername, float64(rating))
+		if err != nil {
+			log.Error("Failed to update cook stats: %v", err)
+			// Continue anyway
+		}
+
 		// Answer the callback
 		bot.AnswerCallbackQuery(callback.ID, fmt.Sprintf("Thanks for rating %d stars!", rating))
 
@@ -1186,7 +1421,7 @@ func main() {
 	}
 
 	// Handle update fridge callback
-	callbackHandlers["update_fridge:"] = func(callback *tgbotapi.CallbackQuery) {
+	callbackHandlers["update_fridge"] = func(callback *tgbotapi.CallbackQuery) {
 		chatID := callback.Message.Chat.ID
 
 		// Extract the dinner ID from the callback data
@@ -1200,6 +1435,7 @@ func main() {
 
 		// Reconstruct the dinner ID by joining all parts after "update_fridge"
 		dinnerID := strings.Join(parts[1:], ":")
+		log.Info("Extracted dinner ID: %s from callback data: %s", dinnerID, callback.Data)
 		log.Info("Looking up dinner with ID: %s for fridge update", dinnerID)
 
 		// Get the dinner event
@@ -1227,6 +1463,9 @@ func main() {
 			log.Error("Failed to update used ingredients: %v", err)
 			// Continue anyway
 		}
+
+		// Update helper statistics (for future shopping feature)
+		// For now, we'll just acknowledge the callback
 
 		// Answer the callback
 		bot.AnswerCallbackQuery(callback.ID, "Fridge updated!")

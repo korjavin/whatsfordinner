@@ -75,6 +75,7 @@ type Statistics struct {
 // CookStat represents the statistics for a cook
 type CookStat struct {
 	UserID      string  `json:"user_id"`
+	Username    string  `json:"username"`
 	CookCount   int     `json:"cook_count"`
 	TotalRating float64 `json:"total_rating"`
 	AvgRating   float64 `json:"avg_rating"`
@@ -83,12 +84,14 @@ type CookStat struct {
 // HelperStat represents the statistics for a shopping helper
 type HelperStat struct {
 	UserID        string `json:"user_id"`
+	Username      string `json:"username"`
 	ShoppingCount int    `json:"shopping_count"`
 }
 
 // SuggesterStat represents the statistics for a dish suggester
 type SuggesterStat struct {
 	UserID          string `json:"user_id"`
+	Username        string `json:"username"`
 	SuggestionCount int    `json:"suggestion_count"`
 	AcceptedCount   int    `json:"accepted_count"`
 }

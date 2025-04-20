@@ -21,18 +21,18 @@
 - [x] `/fridge` – Show current ingredients
 - [x] `/sync_fridge` – Reinitialize fridge
 - [x] `/add_photo` – Use photo to extract ingredients
-- [ ] `/add` – Use text to extract ingredients and add them to fridge
-- [ ] `/stats` – Show family leaderboards
+- [x] `/add` – Use text to extract ingredients and add them to fridge
+- [x] `/stats` – Show family leaderboards
 
 ## 4. Voting and Cooking Flow
 - [x] Suggest 2–3 dishes with matching fridge contents and cuisine filter
 - [x] Create Telegram poll, wait for majority vote
 - [x] Ask willing cook from the "pro" voters
-- [ ] If none agree, retry cooking step
+- [ ] If none agree in 10 minutes, retry cooking step
 - [ ] If still nobody agrees, cancel vote and mark "no dinner today"
 - [ ] Pick random cook from volunteers and share instructions
-- [ ] Provide callbacks for more details, progress updates
-- [ ] Confirm when dinner is ready
+- [x] Provide callbacks for more details, progress updates
+- [x] Confirm when dinner is ready
 
 ## 5. Fridge Inventory
 - [x] Initial entry via chat
@@ -47,12 +47,12 @@
 - [ ] Confirm when shopping is done
 
 ## 7. Feedback Collection
-- [ ] Post-dinner rating collection
-- [ ] Update statistics: best cook, helper, suggester
+- [x] Post-dinner rating collection
+- [x] Update statistics: best cook, helper, suggester
 
 ## 8. Persistent State Management
-- [ ] Use per-channel keying
-- [ ] Safe concurrent access
+- [x] Use per-channel keying
+- [x] Safe concurrent access
 
 ## 9. GitHub Actions & Containerization
 - [x] Setup Dockerfile
