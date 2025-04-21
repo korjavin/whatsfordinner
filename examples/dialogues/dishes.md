@@ -6,4 +6,4 @@
 - Everyone gets a __Dishes done__ message.
 #### _Complex Path_
 - No one presses the `I will do the dishes` button.
-- The bot choses randomly from every Family member _**except the cook**__
+- The bot choses randomly from every Family member _**except the cook**_
