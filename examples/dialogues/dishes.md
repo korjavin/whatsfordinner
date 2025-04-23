@@ -7,3 +7,5 @@
 #### _Complex Path_
 - No one presses the `I will do the dishes` button.
 - The bot choses randomly from every Family member _**except the cook**_.
+- Also the bot is not always choosing the same person all over again.
+
